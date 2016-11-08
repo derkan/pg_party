@@ -43,7 +43,7 @@ For example in following log you can see that function and table is created **fo
 ```
 And add master tables to table `pg_party_config`. For example to add partitions to table `test_table` in `public` schema on column `log_date` with monthly date range plan for next **3** months:
 ```bash
-psql -d DBNAME -c "INSERT INTO pg_party_config VALUES('public','test_table','log_date','d','month',3);"
+psql -d demodb -c "INSERT INTO pg_party_config VALUES('public','test_table','log_date','d','month',3);"
 ```
 Table column description:
 
