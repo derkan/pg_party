@@ -9,7 +9,7 @@ This single script can automatically add new date range partitions to tables aut
 
 Copy this script to your system and configure for your db.
 ```bash
-wget pg_party.sh
+wget https://raw.githubusercontent.com/derkan/pg_party/master/pg_party.sh
 chmod +x pg_party.sh
 vi pg_party.sh
 
@@ -51,4 +51,12 @@ Script uses current timestamp of system to create `future_part_count`s. For exam
 test_table_201611
 test_table_201612
 test_table_201701
+```
+## Adding to cron
+`pg_party.sh` can be any time, because it checks if partitions are already created and not. So you can run it every day for monthly partitioning to be sure that partitions are pre-created.
+
+```bash
+crontab -e
+00  22  * * * ~/pg_party.sh >> ~/pg_party.log 2>&1
+```
 ```
