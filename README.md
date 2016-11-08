@@ -27,6 +27,8 @@ DBLST="'postgres','repmgr'"
 ``` 
 In this configuration all DB's will be checked for new partitions except `postgres','repmgr'` as `DBLST` is set so.
 
+## Configuration
+After updating `pg_party.sh` script run it for the first time to create config table(`pg_party_config`) and  function(`pg_party_date_partition`).
 For example in following log you can see that function and table is created **for each DB**:
 ```bash
 -bash-4.2$ ./pg_party.sh
@@ -38,12 +40,6 @@ For example in following log you can see that function and table is created **fo
 [2016-11-08 17:16:23.826]: Creating config table
 [2016-11-08 17:16:23.845]: Creating function
 [2016-11-08 17:16:23.855]: Checking parts in demodb
-```
-
-## Configuration
-After updating `pg_party.sh` script run it for the first time to create config table(`pg_party_config`) and  function(`pg_party_date_partition`).
-```bash
-./pg_party.sh
 ```
 And add master tables to table `pg_party_config`. For example to add partitions to table `test_table` in `public` schema on column `log_date` with monthly date range plan for next **3** months:
 ```bash
