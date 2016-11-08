@@ -27,6 +27,19 @@ DBLST="'postgres','repmgr'"
 ``` 
 In this configuration all DB's will be checked for new partitions except `postgres','repmgr'` as `DBLST` is set so.
 
+For example in following log you can see that function and table is created **for each DB**:
+```bash
+-bash-4.2$ ./pg_party.sh
+[2016-11-08 17:16:23.792]: Checking if pg_party table and function is installed to testdb
+[2016-11-08 17:16:23.812]: Creating config table
+[2016-11-08 17:16:23.814]: Creating function
+[2016-11-08 17:16:23.815]: Checking parts in testdb
+[2016-11-08 17:16:23.819]: Checking if pg_party table and function is installed to demodb
+[2016-11-08 17:16:23.826]: Creating config table
+[2016-11-08 17:16:23.845]: Creating function
+[2016-11-08 17:16:23.855]: Checking parts in demodb
+```
+
 ## Configuration
 After updating `pg_party.sh` script run it for the first time to create config table(`pg_party_config`) and  function(`pg_party_date_partition`).
 ```bash
@@ -52,11 +65,27 @@ test_table_201611
 test_table_201612
 test_table_201701
 ```
+
+Following example output is generated when I run script on '2016-11-08' with `pg_party_table` is set for **1** `future_part_count` for table `public.test_table` in `demodb`:
+```bash
+-bash-4.2$ ./pg_party.sh 
+[2016-11-08 17:20:37.401]: Checking if pg_party table and function is installed to testdb
+[2016-11-08 17:20:37.419]: Checking parts in testdb
+[2016-11-08 17:20:37.427]: Checking if pg_party table and function is installed to demodb
+[2016-11-08 17:20:37.444]: Checking parts in demodb
+[2016-11-08 17:20:37.451]: Adding parts for public.test_table on col log_date for next 1 months
+NOTICE:  Checking for partition public.test_table_201611
+NOTICE:  New partition public.test_table_201611 is added to table public.test_table on column log_date
+NOTICE:  Checking for partition public.test_table_201612
+NOTICE:  New partition public.test_table_201612 is added to table public.test_table on column log_date
+[2016-11-08 17:20:37.500]: Added 2 partitions to public.test_table
+```
+As you see, two partitions are added, one for current month and one for next month.
+
 ## Adding to cron
 `pg_party.sh` can be any time, because it checks if partitions are already created and not. So you can run it every day for monthly partitioning to be sure that partitions are pre-created.
 
 ```bash
 crontab -e
 00  22  * * * ~/pg_party.sh >> ~/pg_party.log 2>&1
-```
 ```
