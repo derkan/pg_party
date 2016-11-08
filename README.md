@@ -83,6 +83,6 @@ As you see, two partitions are added, one for current month and one for next mon
 `pg_party.sh` can be any time, because it checks if partitions are already created and not. So you can run it every day for monthly partitioning to be sure that partitions are pre-created.
 
 ```bash
-crontab -e
+-bash-4.2$ crontab -e
 00  22  * * * ~/pg_party.sh >> ~/pg_party.log 2>&1
 ```
