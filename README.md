@@ -60,6 +60,7 @@ Script uses current timestamp of system to create `future_part_count`s. For exam
 test_table_201611
 test_table_201612
 test_table_201701
+test_table_201702
 ```
 
 Following example output is generated when I run script on '2016-11-08' with `pg_party_table` is set for **1** `future_part_count` for table `public.test_table` in `demodb`:
