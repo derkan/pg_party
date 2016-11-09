@@ -25,7 +25,7 @@ DB_PORT=5432
 DBCHK="NOT IN"
 DBLST="'postgres','repmgr'"
 ``` 
-In this configuration all DB's will be checked for new partitions except `postgres','repmgr'` as `DBLST` is set so.
+In this configuration all DB's will be checked for new partitions except `postgres','repmgr'` as `DBLST` is set so. This configuration assumes that you are running this script from `postgres` user to login DB without password. If you are going to run with another user, you should set your DB's `pg_hba.conf` file accordingly.
 
 ## Configuration
 After updating `pg_party.sh` script run it for the first time to create config table(`pg_party_config`) and  function(`pg_party_date_partition`).
