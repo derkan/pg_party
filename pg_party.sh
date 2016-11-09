@@ -55,7 +55,7 @@ TBLSQL="CREATE TABLE public.pg_party_config (
    master_table text NOT NULL, 
    part_col text NOT NULL, 
    part_type text not null default 'd',  
-   date_plan text NOT NULL DEFAULT 'YYYYMM', 
+   date_plan text NOT NULL DEFAULT 'month', 
    future_part_count integer NOT NULL DEFAULT 1, 
    PRIMARY KEY (schema_name, master_table)
 );
