@@ -87,7 +87,12 @@ As you see, two partitions are added, one for current month and one for next mon
 00  22  * * * ~/pg_party.sh >> ~/pg_party.log 2>&1
 ```
 ## Notes for MS Windows users
-I haven't tried, but it is possible to run bash scripts by installing [Windows Subsystem for Linux](https://msdn.microsoft.com/en-us/commandline/wsl/install_guide) and than run it on Command Prompt like:
+I haven't tried, but it is possible to run bash scripts by installing [Windows Subsystem for Linux-WSL](https://msdn.microsoft.com/en-us/commandline/wsl/install_guide). After installing get access to WSL command prompt and install postgresql client:
+```bash
+ sudo apt-get install postgresql-client
+```
+And also install pg_party to your home directory  as discussed above and configure it. Then run it on Command Prompt like:
+
 ```bash
 bash -c "~/pg_party.sh" 
 ```
