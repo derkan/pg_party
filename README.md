@@ -87,7 +87,7 @@ As you see, two partitions are added, one for current month and one for next mon
 00  22  * * * ~/pg_party.sh >> ~/pg_party.log 2>&1
 ```
 ## Notes for MS Windows users
-I haven't tried, but it is possible to run bash scripts by installing [Windows Subsystem for Linux](https://msdn.microsoft.com/en-us/commandline/wsl/install_guide) and than run it on Command Promopt like:
+I haven't tried, but it is possible to run bash scripts by installing [Windows Subsystem for Linux](https://msdn.microsoft.com/en-us/commandline/wsl/install_guide) and than run it on Command Prompt like:
 ```bash
 bash -c "~/pg_party.sh" 
 ```
