@@ -43,10 +43,11 @@ log () {
     echo "[$(date '+%Y-%m-%d %T.%3N')]: $*"
 }
 
-DBSEL="SELECT datname 
-         FROM pg_database 
-        WHERE datistemplate=false 
-          AND datname ${DBCHK} (${DBLST});"
+DBSEL="SELECT d.datname, u.usename 
+         FROM pg_database d
+         JOIN pg_user u ON (d.datdba = u.usesysid)
+        WHERE d.datistemplate=false 
+          AND d.datname ${DBCHK} (${DBLST});"
 TBLSEL="SELECT schema_name,master_table,part_col,date_plan,future_part_count 
           FROM pg_party_config;"
 CHKTBL="SELECT to_regclass('public.pg_party_config');"
@@ -58,8 +59,7 @@ TBLSQL="CREATE TABLE public.pg_party_config (
    date_plan text NOT NULL DEFAULT 'month', 
    future_part_count integer NOT NULL DEFAULT 1, 
    PRIMARY KEY (schema_name, master_table)
-);
-ALTER TABLE public.pg_party_config OWNER TO postgres;"
+);"
 CHKFNC="select count(*) from pg_proc where proname ='pg_party_date_partition';"
 FNCSQL="
 CREATE OR REPLACE FUNCTION pg_party_date_partition(
@@ -266,17 +266,16 @@ END;
 \$BODY\$
 LANGUAGE plpgsql VOLATILE
 COST 100;
-
-ALTER FUNCTION pg_party_date_partition( TEXT, TEXT, TEXT, TEXT, INTEGER ) OWNER TO postgres;
 "
 rq postgres "${DBSEL}" | \
-while read db ; do
+while read db owner ; do
     log "Checking if pg_party table and function is installed to $db"
     rq $db "${CHKTBL}" | \
     while read tblins ; do
         if [[ -z "$tblins" ]]; then
                 log "Creating config table"
                 rq $db "${TBLSQL}"
+                rq $db "ALTER TABLE public.pg_party_config OWNER TO ${owner};"
         fi
     done
     rq $db "${CHKFNC}" | \
@@ -284,6 +283,7 @@ while read db ; do
         if [[ "$fnc" -eq 0 ]]; then
                 log "Creating function"
                 rq $db "${FNCSQL}"
+                rq $db "ALTER FUNCTION pg_party_date_partition( TEXT, TEXT, TEXT, TEXT, INTEGER ) OWNER TO ${owner};"
         fi
     done
 
