@@ -142,27 +142,7 @@ BEGIN
       tmp_sql := 'ALTER TABLE ' || schema_name || '.' || quote_ident(part_name) || ' OWNER TO ' || part_owner;
       EXECUTE tmp_sql;
     END IF;
-
-    -- Create non constraint indexes as just like parent table
-    FOR tmp_sql, idx_name IN
-    SELECT
-      pg_get_indexdef(i.oid),
-      i.relname
-    FROM pg_index x
-      JOIN pg_class c ON c.oid = x.indrelid
-      JOIN pg_class i ON i.oid = x.indexrelid
-      LEFT JOIN pg_namespace n ON n.oid = c.relnamespace
-      LEFT JOIN pg_tablespace t ON t.oid = i.reltablespace
-    WHERE NOT x.indisunique
-          AND n.nspname = schema_name
-          AND c.relname = master_table
-    LOOP
-      tmp_sql := replace(tmp_sql, 'CREATE INDEX ' || idx_name || ' ON ' || schema_name || '.' || master_table,
-                         'CREATE INDEX IF NOT EXISTS ' || idx_name || '_' || part_val || ' ON ' || schema_name || '.' ||
-                         part_name);
-      EXECUTE tmp_sql;
-    END LOOP;
-
+ 
     -- Create non constraint indexes as just like parent table
     FOR tmp_sql, idx_name IN
     SELECT
