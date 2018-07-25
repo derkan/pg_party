@@ -1,9 +1,21 @@
 # pg_party
-Automatic partitioning script for PostgreSQL v9.1+
+
+Automatic partitioning script for PostgreSQL v9.1+.
 
 This single script can automatically add new date range partitions to tables automatically. Only date range partitioning is supported for now.
 
 `pg_party.sh` uses a table(`pg_party_config`) and a function(`pg_party_date_partition`) to add new partitions
+
+# Postgresql 10 Native Partitioning
+
+Starting in PostgreSQL 10, PGSQL have [declarative partitioning](https://www.postgresql.org/docs/10/static/ddl-partitioning.html), bu not automatic creation of new partitions yet; with limitations:
+- Cannot create indexes on all partitions automatically. Indexes still need to be manually created on each partition.
+- Updates that would move a row from one partition to another will fail.
+- Row triggers must be defined on individual partitions.
+
+But a [automatic partitoning path](https://www.postgresql.org/message-id/54EC32B6.9070605@lab.ntt.co.jp) has been discussed.
+
+Until full automatic partitioning is developed `pg_part` is your friend.
 
 ## Installing
 
@@ -28,6 +40,7 @@ DBLST="'postgres','repmgr'"
 In this configuration all DB's will be checked for new partitions except `postgres','repmgr'` as `DBLST` is set so. This configuration assumes that you are running this script from `postgres` user to login DB without password. If you are going to run with another user, you should set your DB's `pg_hba.conf` file accordingly.
 
 ## Configuration
+
 After updating `pg_party.sh` script run it for the first time to create config table(`pg_party_config`) and  function(`pg_party_date_partition`).
 For example in following log you can see that function and table is created **for each DB**:
 ```bash
@@ -80,6 +93,7 @@ NOTICE:  New partition public.test_table_201612 is added to table public.test_ta
 As you see, two partitions are added, one for current month and one for next month.
 
 ## Adding to cron
+
 `pg_party.sh` can be any time, because it checks if partitions are already created and not. So you can run it every day for monthly partitioning to be sure that partitions are pre-created.
 
 ```bash
@@ -87,6 +101,7 @@ As you see, two partitions are added, one for current month and one for next mon
 00  22  * * * ~/pg_party.sh >> ~/pg_party.log 2>&1
 ```
 ## Notes for MS Windows users
+
 I haven't tried, but it is possible to run bash scripts by installing [Windows Subsystem for Linux-WSL](https://msdn.microsoft.com/en-us/commandline/wsl/install_guide). After installing get access to WSL command prompt and install postgresql client:
 ```bash
  sudo apt-get install postgresql-client
