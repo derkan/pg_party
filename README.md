@@ -1,6 +1,6 @@
 # pg_party
 
-Automatic partitioning script for PostgreSQL v9.1+.
+Automatic partitioning script for PostgreSQL v9.1+ until PG11(there is a work for PG11, **please, do not use pg_part on PG11**)
 
 This single script can automatically add new date range partitions to tables automatically. Only date range partitioning is supported for now.
 
@@ -15,6 +15,8 @@ Starting in PostgreSQL 10, PGSQL have [declarative partitioning](https://www.pos
 
 But a [automatic partitoning path](https://www.postgresql.org/message-id/54EC32B6.9070605@lab.ntt.co.jp) has been discussed.
 
+# Postgresql 11 Partitioning Improvements
+PG11 supports auto creating indexes on new partitions, so pg_part needs some work to support this. But still in PG11 partitions are not auto created.
 Until full automatic partitioning is developed `pg_part` is your friend.
 
 ## Installing
