@@ -2,7 +2,7 @@
 
 Automatic partitioning script for PostgreSQL v9.1+ until PG11 (there is a work for PG11) 
 
-**PLEASE DO NOT USE ON PG11 until patch is done**
+### PLEASE DO NOT USE ON PG11 until patch is done
 
 This single script can automatically add new date range partitions to tables automatically. Only date range partitioning is supported for now.
 
