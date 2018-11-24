@@ -36,7 +36,7 @@ DBCHK="NOT IN"
 DBLST="'postgres','repmgr'"
 
 # ----- Config End ------- #
-rq2 () {
+rq () {
   $PSQL -h $DB_HOST -p $DB_PORT -U $DB_USER --single-transaction \
   --set AUTOCOMMIT=off --set ON_ERROR_STOP=on \
   --no-password --no-align -t --field-separator ' ' \
@@ -44,13 +44,6 @@ rq2 () {
   -d $1 -c "$2"
 }
 
-rq () {
-  $PSQL --single-transaction \
-  --set AUTOCOMMIT=off --set ON_ERROR_STOP=on \
-  --no-align -t --field-separator ' ' \
-  --quiet --pset footer=off \
-  -d $1 -c "$2"
-}
 
 log () {
     echo "[$(date '+%Y-%m-%d %T.%3N')]: $*"
