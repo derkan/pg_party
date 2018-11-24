@@ -51,8 +51,9 @@ In this configuration all DB's will be checked for new partitions except `postgr
 
 ## Configuration
 
-After updating `pg_party.sh` script run it for the first time to create config table(`pg_party_config`) and  function(`pg_party_date_partition`).
+After updating `pg_party.sh` script run it for the first time to create config tables(`pg_party_config, pg_party_config_ddl`) and  functions(`pg_party_date_partition, pg_party_date_partition_ddl`).
 For example in following log you can see that function and table is created **for each DB**:
+
 ```bash
 -bash-4.2$ ./pg_party.sh
 [2016-11-08 17:16:23.792]: Checking if pg_party table and function is installed to testdb
@@ -64,10 +65,13 @@ For example in following log you can see that function and table is created **fo
 [2016-11-08 17:16:23.845]: Creating function
 [2016-11-08 17:16:23.855]: Checking parts in demodb
 ```
+
 And add master tables to table `pg_party_config`. For example to add partitions to table `test_table` in `public` schema on column `log_date` with monthly date range plan for next **3** months:
+
 ```bash
 psql -d demodb -c "INSERT INTO pg_party_config VALUES('public','test_table','log_date','d','month',3, false);"
 ```
+
 Table column description:
 
 |Column|Description|Example Value|
@@ -80,6 +84,7 @@ Table column description:
 |is_native|Will use declerative-native partitioning or not(for version>=10) | false|
 
 Script uses current timestamp of system to create `future_part_count`s. For example if system date is '2016-11-08', and `future_part_count` is **3** then these partitions will be created for table `test_table`:
+
 ```
 test_table_201611
 test_table_201612
@@ -88,6 +93,7 @@ test_table_201702
 ```
 
 Following example output is generated when I run script on '2016-11-08' with `pg_party_table` is set for **1** `future_part_count` for table `public.test_table` in `demodb`:
+
 ```bash
 -bash-4.2$ ./pg_party.sh 
 [2016-11-08 17:20:37.401]: Checking if pg_party table and function is installed to testdb
@@ -101,6 +107,7 @@ NOTICE:  Checking for partition public.test_table_201612
 NOTICE:  New partition public.test_table_201612 is added to table public.test_table on column log_date
 [2016-11-08 17:20:37.500]: Added 2 partitions to public.test_table
 ```
+
 As you see, two partitions are added, one for current month and one for next month.
 
 ## Adding to cron
@@ -114,6 +121,7 @@ As you see, two partitions are added, one for current month and one for next mon
 ## Notes for MS Windows users
 
 I haven't tried, but it is possible to run bash scripts by installing [Windows Subsystem for Linux-WSL](https://msdn.microsoft.com/en-us/commandline/wsl/install_guide). After installing get access to WSL command prompt and install postgresql client:
+
 ```bash
  sudo apt-get install postgresql-client
 ```
