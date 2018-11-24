@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #
-# pg_party: Adds new parttitions automatically.(Only for date range partitioning for now)
+# pg_party: Adds new partitions automatically.(Only for date range partitioning for now)
 #           Also copies constraints and indexes from parent table to new partition table.
 #           At first run creates `pg_party_config` table and `pg_party_date_partitioni` func.
 #           After first run add tables to be partitioned to `pg_party_config` like:
@@ -9,15 +9,17 @@
 #               SCHEMA: Schema of parent table to add new partitions
 #               TABLE : Parent table name to add new parttions
 #               COLUMN: Column name of parent table to be used for partitioning
-#               PLAN  : Can be 'month', 'year', 'week' or 'day'
+#               PLAN  : Can be 'month', 'year', 'week', 'hour' or 'day'
 #               PARTYP: Only supported value is 'd' as only date range partitoning is available.
 #               CNT   : Count of future partitions to create. For example if set to 3, next
 #                       3 month's part is added.
 #               NATIVE: can be false or true, only false is supported now
 #           Can be run every day, it adds new objects only if they are not already existing.
-VERSION="1.1"
+VERSION="1.2"
+# version 1.2 Native(declarative support for PostgresSQL version >= 10
 # version 1.1 Time based partitioning support and DB version check is added
-# version 1.0 Erkan Durmus derkan@gmail.com
+# version 1.0 Initial version
+# Author Erkan Durmus derkan@gmail.com
 
 set -e
 set -u
@@ -44,18 +46,17 @@ rq () {
   -d $1 -c "$2"
 }
 
-
+PLANS=("month" "year" "week" "hour" "day")
 log () {
     echo "[$(date '+%Y-%m-%d %T.%3N')]: $*"
 }
-
 VERSQL="SELECT current_setting('server_version_num');"
 DBSEL="SELECT d.datname, u.usename
          FROM pg_database d
          JOIN pg_user u ON (d.datdba = u.usesysid)
         WHERE d.datistemplate=false
           AND d.datname ${DBCHK} (${DBLST});"
-TBLSEL="SELECT schema_name,master_table,part_col,date_plan,future_part_count
+TBLSEL="SELECT schema_name,master_table,part_col,date_plan,future_part_count,is_native
           FROM pg_party_config;"
 CHKTBL="SELECT to_regclass('public.pg_party_config');"
 TBLSQL="CREATE TABLE public.pg_party_config (
@@ -68,15 +69,23 @@ TBLSQL="CREATE TABLE public.pg_party_config (
    is_native bool NOT NULL default false,
    PRIMARY KEY (schema_name, master_table)
 );"
+CHKDDLTBL="SELECT to_regclass('public.pg_party_config_ddl');"
+DDLSQL="CREATE TABLE public.pg_party_config_ddl (
+   schema_name text NOT NULL,
+   master_table text NOT NULL,
+   DDL text NOT NULL,
+   PRIMARY KEY (schema_name,master_table,ddl),
+   FOREIGN KEY (schema_name,master_table) REFERENCES public.pg_party_config(schema_name,master_table)
+);"
 TBL10SQL="DO \$\$
 BEGIN
   ALTER TABLE public.pg_party_config ADD COLUMN is_native BOOL NOT NULL DEFAULT false;
 EXCEPTION
-  WHEN duplicate_column THEN RAISE NOTICE 'column is_native already exists';
+  WHEN duplicate_column THEN NULL;
 END
 \$\$
 "
-CHKFNC="select count(*) from pg_proc where proname ='pg_party_date_partition';"
+CHKFNC="SELECT count(*) FROM pg_proc WHERE proname ='pg_party_date_partition';"
 FNCSQL="
 CREATE OR REPLACE FUNCTION pg_party_date_partition(
   schema_name       TEXT,
@@ -105,9 +114,7 @@ DECLARE
   const_name        TEXT;
   if_stmt           TEXT;
   idx               INT;
-  version           INT;
 BEGIN
-  SELECT current_setting('server_version_num') INTO version;
   created_parts := 0;
   date_format := CASE WHEN date_plan = 'month'
     		   THEN 'YYYYMM'
@@ -139,7 +146,7 @@ BEGIN
               FROM information_schema.tables
               WHERE table_schema = schema_name AND table_name = part_name)
     THEN
-      RAISE NOTICE 'Partition already created %.%', schema_name, part_name;
+      RAISE NOTICE 'Partition is already created %.%', schema_name, part_name;
       is_already_exists := TRUE;
     ELSE
       -- Get parent table owner.We will use it to set owner of new partition.
@@ -267,13 +274,153 @@ END;
 LANGUAGE plpgsql VOLATILE
 COST 100;
 "
-rq postgres "${VERSQL}" | \
-while read ver ; do
-  if [[ "$ver" -lt 90100 ]]; then
-	  log "Your DB version(${ver}) is too old"
-	  exit 1
-  fi
-done
+
+CHKDDLFNC="SELECT count(*) FROM pg_proc WHERE proname ='pg_party_date_partition_ddl';"
+DDLFNCSQL="
+CREATE OR REPLACE FUNCTION public.pg_party_date_partition_native(
+  part_schema       text,
+  part_parent      text,
+  part_col          text,
+  date_plan         text,
+  future_part_count integer)
+  RETURNS integer AS
+\$BODY\$
+DECLARE
+  created_parts     INT;
+  is_already_exists BOOL;
+  date_format       TEXT;
+  cur_time          TIMESTAMP;
+  start_time        TIMESTAMP;
+  end_time          TIMESTAMP;
+  plan_interval     INTERVAL;
+  part_owner        TEXT;
+  part_name         TEXT;
+  part_val          TEXT;
+  tmp_sql    TEXT;
+  part_attrs smallint [];
+  part_strat char;
+  tpart_col  text;
+BEGIN
+  created_parts := 0;
+  date_format := CASE WHEN date_plan = 'month'
+    THEN 'YYYYMM'
+                 WHEN date_plan = 'week'
+                   THEN 'IYYYIW'
+                 WHEN date_plan = 'day'
+                   THEN 'YYYYDDD'
+                 WHEN date_plan = 'year'
+                   THEN 'YYYY'
+                 WHEN date_plan = 'hour'
+                   THEN 'YYYYDDD_HH24MI'
+                 ELSE 'error'
+                 END;
+
+  IF date_format = 'error'
+  THEN
+    RAISE EXCEPTION 'Plan is invalid: %, (valid values: month/week/day/year/hour)', date_plan;
+  END IF;
+
+  SELECT
+    p.partstrat,
+    partattrs
+  INTO part_strat, part_attrs
+  FROM pg_catalog.pg_partitioned_table p
+    JOIN pg_catalog.pg_class c ON p.partrelid = c.oid
+    JOIN pg_namespace n ON c.relnamespace = n.oid
+  WHERE n.nspname = part_schema :: name
+        AND c.relname = part_parent :: name;
+  IF part_strat <> 'r' OR part_strat IS NULL
+  THEN
+    RAISE EXCEPTION 'Only range partitioning is supported for native partitioning';
+  END IF;
+  IF array_length(part_attrs, 1) > 1
+  THEN
+    RAISE NOTICE 'Only single column partitioning is supported for native partititoning';
+  END IF;
+
+  SELECT a.attname
+  INTO tpart_col
+  FROM pg_attribute a
+    JOIN pg_class c ON a.attrelid = c.oid
+    JOIN pg_namespace n ON c.relnamespace = n.oid
+    JOIN pg_type t ON a.atttypid = t.oid
+  WHERE n.nspname = part_schema :: name
+        AND c.relname = part_parent :: name
+        AND attnum IN (SELECT unnest(partattrs)
+                       FROM pg_partitioned_table p
+                       WHERE a.attrelid = p.partrelid);
+
+  IF tpart_col <> part_col
+  THEN
+    RAISE EXCEPTION 'Native partitioned column % of table does not match to value %', tpart_col, part_col;
+  END IF;
+
+  cur_time := now() AT TIME ZONE 'utc';
+  FOR i IN 1..future_part_count + 1 LOOP
+    start_time := (DATE_TRUNC(date_plan, cur_time)) + (i - 1 || ' ' || date_plan) :: INTERVAL;
+    plan_interval := (i || ' ' || date_plan) :: INTERVAL;
+    end_time := (DATE_TRUNC(date_plan, (cur_time + plan_interval)));
+    part_val := TO_CHAR(start_time, date_format);
+    part_name := part_parent || '_' || part_val;
+
+    RAISE NOTICE 'Checking for partition %.%', part_schema, part_name;
+    IF EXISTS(SELECT 1
+              FROM information_schema.tables
+              WHERE table_schema = part_schema AND table_name = part_name)
+    THEN
+      RAISE NOTICE 'Partition is already created %.%', part_schema, part_name;
+      is_already_exists := TRUE;
+    ELSE
+      -- Get parent table owner.We will use it to set owner of new partition.
+      SELECT pg_get_userbyid(c.relowner)
+      FROM pg_catalog.pg_class c
+        JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
+      WHERE n.nspname = part_schema :: name
+            AND c.relname = part_parent :: name
+      INTO part_owner;
+      -- Now add partition
+      tmp_sql := 'CREATE TABLE ' || part_schema || '.' || quote_ident(part_name)
+              || ' PARTITION OF ' || part_schema || '.' || part_parent
+              || ' FOR VALUES FROM (''' || start_time || '+00:00'')'
+              || ' TO (''' || end_time || '+00:00'')';
+      EXECUTE tmp_sql;
+      RAISE NOTICE 'New partition %.% is added to table %.% on column %', part_schema, part_name, part_schema, part_parent, part_col;
+      is_already_exists := FALSE;
+      created_parts := created_parts + 1;
+      tmp_sql := 'ALTER TABLE ' || part_schema || '.' || quote_ident(part_name) || ' OWNER TO ' || part_owner;
+      EXECUTE tmp_sql;
+    END IF;
+
+    -- Run DDL's in ddl table
+    IF NOT is_already_exists
+    THEN
+      FOR tmp_sql IN
+      SELECT ddl
+      FROM public.pg_party_config_ddl x
+      WHERE x.schema_name = part_schema :: name
+            AND x.master_table = part_parent :: name
+      LOOP
+        tmp_sql := REPLACE(REPLACE(replace(tmp_sql, '\${PARTNAME}', part_name),'\${PARTSCHEMA}', part_schema),'\${PARTPARENT}', part_parent);
+        RAISE NOTICE 'Running DDL %', tmp_sql;
+        EXECUTE tmp_sql;
+      END LOOP;
+    END IF;
+  END LOOP;
+
+  RETURN created_parts;
+END;
+\$BODY\$
+LANGUAGE plpgsql
+VOLATILE
+COST 100;
+"
+
+PGVER=$(rq postgres "${VERSQL}")
+if [[ "$PGVER" -lt 90100 ]]; then
+  log "Your DB version(${ver}) is too old"
+  exit 1
+fi
+
 rq postgres "${DBSEL}" | \
 while read db owner ; do
     log "Checking if pg_party table and function is installed to $db"
@@ -288,6 +435,15 @@ while read db owner ; do
           rq $db "${TBL10SQL}"
         fi
     done
+    rq $db "${CHKDDLTBL}" | \
+    while read tblins ; do
+        if [[ -z "$tblins" ]]; then
+          log "Creating ddl config table"
+          rq $db "${DDLSQL}"
+          rq $db "ALTER TABLE public.pg_party_config_ddl OWNER TO ${owner};"
+        fi
+    done
+
     rq $db "${CHKFNC}" | \
     while read fnc ; do
         ddl_needed=0
@@ -300,16 +456,42 @@ while read db owner ; do
 	      fi
         if [[ "$ddl_needed" -eq 1 ]]; then
           rq $db "${FNCSQL}"
-          rq $db "ALTER FUNCTION pg_party_date_partition( TEXT, TEXT, TEXT, TEXT, INTEGER ) OWNER TO ${owner};"
+          rq $db "ALTER FUNCTION public.pg_party_date_partition( TEXT, TEXT, TEXT, TEXT, INTEGER ) OWNER TO ${owner};"
           touch ./.pg_party_f_${VERSION}.done
         fi
     done
-
+    if [[ "$PGVER" -ge 100000 ]]; then
+      rq $db "${CHKDDLFNC}" | \
+      while read fnc ; do
+          ddl_needed=0
+          if [[ "$fnc" -eq 0 ]]; then
+                  log "Creating native partitioning function"
+                  ddl_needed=1
+          elif [[ ! -f ./.pg_party_fn_${VERSION}.done ]]; then
+                  log "Updating function"
+                  ddl_needed=1
+          fi
+          if [[ "$ddl_needed" -eq 1 ]]; then
+            rq $db "${DDLFNCSQL}"
+            rq $db "ALTER FUNCTION public.pg_party_date_partition_native( TEXT, TEXT, TEXT, TEXT, INTEGER ) OWNER TO ${owner};"
+            touch ./.pg_party_fn_${VERSION}.done
+          fi
+      done
+    fi
     log "Checking parts in $db"
     rq $db "${TBLSEL}" | \
-    while read schema table col plan count; do
+    while read schema table col plan count is_native; do
+        native=""
+        if [[ ${is_native} == "t" ]]; then
+          native="_native"
+        fi
         log "Adding parts for ${schema}.${table} on col ${col} for next ${count} months"
-        rq $db "SELECT pg_party_date_partition('${schema}','${table}','${col}','${plan}',${count});" | \
+        if [[ ${is_native} == "t" && ${PGVER} -lt 100000 ]]; then
+          log "Your DB version(${PGVER}) is does not support native parititoning"
+          exit 1
+        fi
+
+        rq $db "SELECT pg_party_date_partition${native}('${schema}','${table}','${col}','${plan}',${count});" | \
         while read added; do
            if [[ $added -ne 0 ]]; then
                log "Added ${added} partitions to ${schema}.${table}"
