@@ -1,21 +1,31 @@
 # pg_party
 
-Automatic partitioning script for PostgreSQL v9.1+ ( *do not support native partitioning(>PgSQLv10) yet.* )
+Automatic partitioning script for PostgreSQL v9.1+ 
 
 This single script can automatically add new date range partitions to tables automatically. Only date range partitioning is supported for now.
 
-`pg_party.sh` uses a table(`pg_party_config`) and a function(`pg_party_date_partition`) to add new partitions
+`pg_party.sh` uses a tables(`pg_party_config, pg_party_config_ddl`) and a functions(`pg_party_date_partition, pg_party_date_partition_ddl`) to add new partitions
 
 # About Postgresql 10 Native Partitioning
 
-Starting in PostgreSQL 10, PGSQL have [declarative partitioning](https://www.postgresql.org/docs/10/static/ddl-partitioning.html), bu not automatic creation of new partitions yet; with limitations:
-- Cannot create indexes on all partitions automatically. Indexes still need to be manually created on each partition.
-- Updates that would move a row from one partition to another will fail.
-- Row triggers must be defined on individual partitions.
+Starting in PostgreSQL 10, PGSQL have [declarative partitioning](https://www.postgresql.org/docs/10/static/ddl-partitioning.html), bu not automatic creation of new partitions yet.
 
-But a [automatic partitoning path](https://www.postgresql.org/message-id/54EC32B6.9070605@lab.ntt.co.jp) has been discussed.
+For PGSQL version 9.x `pg_party` inherits indexes, constraints from master table while creating new partitions. But for PGSQL 10/11 versions, indexes can not be defined on parent table. To be able to auto create needed indexes `pg_party` creates `pg_party_config_ddl` table. You can add your DDL's for new partitions. `pg_party` will execute each DDL on new partition. To be able make your DDLs dynamic you can use following variables in your DDL template:
 
-`pg_party` does not support native partitioning yet.
+|Variable|Description|
+|--------|-----------|
+|${PARTSCHEMA}|Current partition's schema name|
+|${PARTNAME}|Current partition's name|
+|${PARTPARENT}|Current partition's parent table's name|
+
+For example if you add this DDL to table `pg_party_config_ddl`
+
+```sql
+INSERT INTO TABLE pg_party_config_ddl(schema_name,master_table,ddl)
+VALUES('public', 'measurements', 'CREATE INDEX ${PARTNAME}_city_id_idx on  ${PARTNAME}(city_id)');
+```
+
+`pg_party` will run this DDL template for each new partitions after replacing variables.
 
 ## Installing
 
@@ -56,7 +66,7 @@ For example in following log you can see that function and table is created **fo
 ```
 And add master tables to table `pg_party_config`. For example to add partitions to table `test_table` in `public` schema on column `log_date` with monthly date range plan for next **3** months:
 ```bash
-psql -d demodb -c "INSERT INTO pg_party_config VALUES('public','test_table','log_date','d','month',3);"
+psql -d demodb -c "INSERT INTO pg_party_config VALUES('public','test_table','log_date','d','month',3, false);"
 ```
 Table column description:
 
@@ -65,8 +75,9 @@ Table column description:
 |schema_name|Schema name of master table|public|
 |master_table|Parent table name|test_table|
 |part_col|Timestamp typed column to use as partitioning column| log_date|
-|date_plan|Date partitioning plan: `day`, `week`, `month`, `year`| month|
+|date_plan|Date partitioning plan: `day`, `week`, `month`, `year`, `hour` | month|
 |future_part_count|How many next partitions will be created| 1|
+|is_native|Will use declerative-native partitioning or not(for version>=10) | false|
 
 Script uses current timestamp of system to create `future_part_count`s. For example if system date is '2016-11-08', and `future_part_count` is **3** then these partitions will be created for table `test_table`:
 ```
