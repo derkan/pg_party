@@ -6,7 +6,7 @@ This single script can automatically add new date range partitions to tables aut
 
 `pg_party.sh` uses a tables(`pg_party_config, pg_party_config_ddl`) and a functions(`pg_party_date_partition, pg_party_date_partition_ddl`) to add new partitions
 
-# About Postgresql 10 Native Partitioning
+# About Postgresql 10 Declarative Partitioning
 
 Starting in PostgreSQL 10, PGSQL have [declarative partitioning](https://www.postgresql.org/docs/10/static/ddl-partitioning.html), bu not automatic creation of new partitions yet.
 
