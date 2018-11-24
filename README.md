@@ -12,9 +12,10 @@ Starting in PostgreSQL 10, PGSQL have [declarative partitioning](https://www.pos
 - Cannot create indexes on all partitions automatically. Indexes still need to be manually created on each partition.
 - Updates that would move a row from one partition to another will fail.
 - Row triggers must be defined on individual partitions.
-`pg_party` does not support native partitioning yet.
 
 But a [automatic partitoning path](https://www.postgresql.org/message-id/54EC32B6.9070605@lab.ntt.co.jp) has been discussed.
+
+`pg_party` does not support native partitioning yet.
 
 ## Installing
 
