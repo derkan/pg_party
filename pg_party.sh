@@ -5,15 +5,18 @@
 #           Also copies constraints and indexes from parent table to new partition table.
 #           At first run creates `pg_party_config` table and `pg_party_date_partitioni` func.
 #           After first run add tables to be partitioned to `pg_party_config` like:
-#           INSERT INTO pg_party_config VALUES('SCHEMA','TABLE','COLUMN','PARTYP','PLAN',CNT);
+#           INSERT INTO pg_party_config VALUES('SCHEMA','TABLE','COLUMN','PARTYP','PLAN',CNT,f);
 #               SCHEMA: Schema of parent table to add new partitions
-#               TABLE : Parent table name to add new parttions 
+#               TABLE : Parent table name to add new parttions
 #               COLUMN: Column name of parent table to be used for partitioning
 #               PLAN  : Can be 'month', 'year', 'week' or 'day'
 #               PARTYP: Only supported value is 'd' as only date range partitoning is available.
-#               CNT   : Count of future partitions to create. For example if set to 3, next 
+#               CNT   : Count of future partitions to create. For example if set to 3, next
 #                       3 month's part is added.
+#               NATIVE: can be false or true, only false is supported now
 #           Can be run every day, it adds new objects only if they are not already existing.
+VERSION="1.1"
+# version 1.1 Time based partitioning support and DB version check is added
 # version 1.0 Erkan Durmus derkan@gmail.com
 
 set -e
@@ -21,20 +24,30 @@ set -u
 
 # ----- Config Begin ----- #
 
-PSQL=/bin/psql
+PSQL=/usr/bin/psql
 DB_USER=postgres
 DB_HOST=127.0.0.1
 DB_PORT=5432
 
 # Which DB's should be checked for new partitions
+# DBCHK="IN"
+# DBLST="'testdb'"
 DBCHK="NOT IN"
 DBLST="'postgres','repmgr'"
 
 # ----- Config End ------- #
-rq () {
+rq2 () {
   $PSQL -h $DB_HOST -p $DB_PORT -U $DB_USER --single-transaction \
   --set AUTOCOMMIT=off --set ON_ERROR_STOP=on \
   --no-password --no-align -t --field-separator ' ' \
+  --quiet --pset footer=off \
+  -d $1 -c "$2"
+}
+
+rq () {
+  $PSQL --single-transaction \
+  --set AUTOCOMMIT=off --set ON_ERROR_STOP=on \
+  --no-align -t --field-separator ' ' \
   --quiet --pset footer=off \
   -d $1 -c "$2"
 }
@@ -43,23 +56,33 @@ log () {
     echo "[$(date '+%Y-%m-%d %T.%3N')]: $*"
 }
 
-DBSEL="SELECT d.datname, u.usename 
+VERSQL="SELECT current_setting('server_version_num');"
+DBSEL="SELECT d.datname, u.usename
          FROM pg_database d
          JOIN pg_user u ON (d.datdba = u.usesysid)
-        WHERE d.datistemplate=false 
+        WHERE d.datistemplate=false
           AND d.datname ${DBCHK} (${DBLST});"
-TBLSEL="SELECT schema_name,master_table,part_col,date_plan,future_part_count 
+TBLSEL="SELECT schema_name,master_table,part_col,date_plan,future_part_count
           FROM pg_party_config;"
 CHKTBL="SELECT to_regclass('public.pg_party_config');"
 TBLSQL="CREATE TABLE public.pg_party_config (
-   schema_name text NOT NULL, 
-   master_table text NOT NULL, 
-   part_col text NOT NULL, 
-   part_type text not null default 'd',  
-   date_plan text NOT NULL DEFAULT 'month', 
-   future_part_count integer NOT NULL DEFAULT 1, 
+   schema_name text NOT NULL,
+   master_table text NOT NULL,
+   part_col text NOT NULL,
+   part_type text NOT NULL default 'd',
+   date_plan text NOT NULL DEFAULT 'month',
+   future_part_count integer NOT NULL DEFAULT 1,
+   is_native bool NOT NULL default false,
    PRIMARY KEY (schema_name, master_table)
 );"
+TBL10SQL="DO \$\$
+BEGIN
+  ALTER TABLE public.pg_party_config ADD COLUMN is_native BOOL NOT NULL DEFAULT false;
+EXCEPTION
+  WHEN duplicate_column THEN RAISE NOTICE 'column is_native already exists';
+END
+\$\$
+"
 CHKFNC="select count(*) from pg_proc where proname ='pg_party_date_partition';"
 FNCSQL="
 CREATE OR REPLACE FUNCTION pg_party_date_partition(
@@ -89,14 +112,18 @@ DECLARE
   const_name        TEXT;
   if_stmt           TEXT;
   idx               INT;
+  version           INT;
 BEGIN
+  SELECT current_setting('server_version_num') INTO version;
   created_parts := 0;
   date_format := CASE WHEN date_plan = 'month'
-    THEN 'YYYYMM'
+    		   THEN 'YYYYMM'
                  WHEN date_plan = 'week'
                    THEN 'IYYYIW'
                  WHEN date_plan = 'day'
                    THEN 'YYYYDDD'
+                 WHEN date_plan = 'hour'
+                   THEN 'YYYYDDD_HH24MI'
                  WHEN date_plan = 'year'
                    THEN 'YYYY'
                  ELSE 'error'
@@ -104,7 +131,7 @@ BEGIN
 
   IF date_format = 'error'
   THEN
-    RAISE EXCEPTION 'Plan is invalid: %, (valid values: month/week/day/year)', date_plan;
+    RAISE EXCEPTION 'Plan is invalid: %, (valid values: month/week/day/hour/year)', date_plan;
   END IF;
   cur_time := now() AT TIME ZONE 'utc';
   FOR i IN 1..future_part_count + 1 LOOP
@@ -142,7 +169,7 @@ BEGIN
       tmp_sql := 'ALTER TABLE ' || schema_name || '.' || quote_ident(part_name) || ' OWNER TO ' || part_owner;
       EXECUTE tmp_sql;
     END IF;
- 
+
     -- Create non constraint indexes as just like parent table
     FOR tmp_sql, idx_name IN
     SELECT
@@ -247,23 +274,41 @@ END;
 LANGUAGE plpgsql VOLATILE
 COST 100;
 "
+rq postgres "${VERSQL}" | \
+while read ver ; do
+  if [[ "$ver" -lt 90100 ]]; then
+	  log "Your DB version(${ver}) is too old"
+	  exit 1
+  fi
+done
 rq postgres "${DBSEL}" | \
 while read db owner ; do
     log "Checking if pg_party table and function is installed to $db"
     rq $db "${CHKTBL}" | \
     while read tblins ; do
         if [[ -z "$tblins" ]]; then
-                log "Creating config table"
-                rq $db "${TBLSQL}"
-                rq $db "ALTER TABLE public.pg_party_config OWNER TO ${owner};"
+          log "Creating config table"
+          rq $db "${TBLSQL}"
+          rq $db "ALTER TABLE public.pg_party_config OWNER TO ${owner};"
+        else
+          log "Checking pg_party table"
+          rq $db "${TBL10SQL}"
         fi
     done
     rq $db "${CHKFNC}" | \
     while read fnc ; do
+        ddl_needed=0
         if [[ "$fnc" -eq 0 ]]; then
                 log "Creating function"
-                rq $db "${FNCSQL}"
-                rq $db "ALTER FUNCTION pg_party_date_partition( TEXT, TEXT, TEXT, TEXT, INTEGER ) OWNER TO ${owner};"
+                ddl_needed=1
+	      elif [[ ! -f ./pg_party_f_${VERSION}.done ]]; then
+                log "Updating function"
+                ddl_needed=1
+	      fi
+        if [[ "$ddl_needed" -eq 1 ]]; then
+          rq $db "${FNCSQL}"
+          rq $db "ALTER FUNCTION pg_party_date_partition( TEXT, TEXT, TEXT, TEXT, INTEGER ) OWNER TO ${owner};"
+          touch ./pg_party_f_${VERSION}.done
         fi
     done
 
