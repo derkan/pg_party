@@ -301,14 +301,14 @@ while read db owner ; do
         if [[ "$fnc" -eq 0 ]]; then
                 log "Creating function"
                 ddl_needed=1
-	      elif [[ ! -f ./pg_party_f_${VERSION}.done ]]; then
+	      elif [[ ! -f ./.pg_party_f_${VERSION}.done ]]; then
                 log "Updating function"
                 ddl_needed=1
 	      fi
         if [[ "$ddl_needed" -eq 1 ]]; then
           rq $db "${FNCSQL}"
           rq $db "ALTER FUNCTION pg_party_date_partition( TEXT, TEXT, TEXT, TEXT, INTEGER ) OWNER TO ${owner};"
-          touch ./pg_party_f_${VERSION}.done
+          touch ./.pg_party_f_${VERSION}.done
         fi
     done
 
