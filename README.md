@@ -2,7 +2,7 @@
 
 Automatic partitioning script for PostgreSQL v9.1+ 
 
-This single script can automatically add new date range partitions to tables automatically. Only date range partitioning is supported for now.
+This single script can automatically add new date range partitions to tables automatically. Supported plans are `year`, `month`, `week`, `day`, `hour`.
 
 `pg_party.sh` uses a tables(`pg_party_config, pg_party_config_ddl`) and a functions(`pg_party_date_partition, pg_party_date_partition_native`) to add new partitions
 
@@ -85,6 +85,16 @@ Table column description:
 |part_col|Timestamp typed column to use as partitioning column| log_date|
 |date_plan|Date partitioning plan: `day`, `week`, `month`, `year`, `hour` | month|
 |future_part_count|How many next partitions will be created| 1|
+
+Partition naming formats
+
+|Plan|Format|
+|-----|------|
+|Year| `partname`_YYYY |
+|Month| `partname`_YYYYMM |
+|Week | `partname`_IYYYIW |
+|Day| `partname`_YYYYDDD|
+|Hour| `partname`_YYYYDDD_HH24MI|
 
 Script uses current timestamp of system to create `future_part_count`s. For example if system date is '2016-11-08', and `future_part_count` is **3** then these partitions will be created for table `test_table`:
 
