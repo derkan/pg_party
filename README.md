@@ -73,7 +73,7 @@ For example in following log you can see that function and table is created **fo
 And add master tables to table `pg_party_config`. For example to add partitions to table `test_table` in `public` schema on column `log_date` with monthly date range plan for next **3** months:
 
 ```bash
-psql -d demodb -c "INSERT INTO pg_party_config VALUES('public','test_table','log_date','d','month',3, false);"
+psql -d demodb -c "INSERT INTO pg_party_config VALUES('public','test_table','log_date','d','month',3);"
 ```
 
 Table column description:
@@ -85,7 +85,6 @@ Table column description:
 |part_col|Timestamp typed column to use as partitioning column| log_date|
 |date_plan|Date partitioning plan: `day`, `week`, `month`, `year`, `hour` | month|
 |future_part_count|How many next partitions will be created| 1|
-|is_native|Will use declerative-native partitioning or not(for version>=10) | false|
 
 Script uses current timestamp of system to create `future_part_count`s. For example if system date is '2016-11-08', and `future_part_count` is **3** then these partitions will be created for table `test_table`:
 
