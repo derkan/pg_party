@@ -4,9 +4,9 @@ Automatic partitioning script for PostgreSQL v9.1+
 
 This single script can automatically add new date range partitions to tables automatically. Only date range partitioning is supported for now.
 
-`pg_party.sh` uses a tables(`pg_party_config, pg_party_config_ddl`) and a functions(`pg_party_date_partition, pg_party_date_partition_ddl`) to add new partitions
+`pg_party.sh` uses a tables(`pg_party_config, pg_party_config_ddl`) and a functions(`pg_party_date_partition, pg_party_date_partition_native`) to add new partitions
 
-# About Postgresql 10 Declarative Partitioning
+## About Postgresql 10 Declarative Partitioning
 
 Starting in PostgreSQL 10, PGSQL have [declarative partitioning](https://www.postgresql.org/docs/10/static/ddl-partitioning.html), bu not automatic creation of new partitions yet.
 
@@ -26,6 +26,10 @@ VALUES('public', 'measurements', 'CREATE INDEX ${PARTNAME}_city_id_idx on  ${PAR
 ```
 
 `pg_party` will run this DDL template for each new partitions after replacing variables.
+
+## About Postgresql 11 Declarative Partitioning
+
+With version 11, PostgreSQL lets you create indexes on parent table and  will automatically create same indexes on all the child tables automatically. So for v11, `pg_party_config_ddl` table is not needed to be configured. `pg_party` will create future partitions and all indexes will be copied to new partitions by PostgreSQL automatically.
 
 ## Installing
 
@@ -51,7 +55,7 @@ In this configuration all DB's will be checked for new partitions except `postgr
 
 ## Configuration
 
-After updating `pg_party.sh` script run it for the first time to create config tables(`pg_party_config, pg_party_config_ddl`) and  functions(`pg_party_date_partition, pg_party_date_partition_ddl`).
+After updating `pg_party.sh` script run it for the first time to create config tables(`pg_party_config, pg_party_config_ddl`) and  functions(`pg_party_date_partition, pg_party_date_partition_native`).
 For example in following log you can see that function and table is created **for each DB**:
 
 ```bash
