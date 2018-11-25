@@ -13,7 +13,6 @@
 #               PARTYP: Only supported value is 'd' as only date range partitoning is available.
 #               CNT   : Count of future partitions to create. For example if set to 3, next
 #                       3 month's part is added.
-#               NATIVE: can be false or true, only false is supported now
 #           Can be run every day, it adds new objects only if they are not already existing.
 VERSION="1.2"
 # version 1.2 Native(declarative support for PostgresSQL version >= 10
@@ -56,7 +55,7 @@ DBSEL="SELECT d.datname, u.usename
          JOIN pg_user u ON (d.datdba = u.usesysid)
         WHERE d.datistemplate=false
           AND d.datname ${DBCHK} (${DBLST});"
-TBLSEL="SELECT schema_name,master_table,part_col,date_plan,future_part_count,is_native
+TBLSEL="SELECT schema_name,master_table,part_col,date_plan,future_part_count
           FROM pg_party_config;"
 CHKTBL="SELECT to_regclass('public.pg_party_config');"
 TBLSQL="CREATE TABLE public.pg_party_config (
@@ -66,7 +65,6 @@ TBLSQL="CREATE TABLE public.pg_party_config (
    part_type text NOT NULL default 'd',
    date_plan text NOT NULL DEFAULT 'month',
    future_part_count integer NOT NULL DEFAULT 1,
-   is_native bool NOT NULL default false,
    PRIMARY KEY (schema_name, master_table)
 );"
 CHKDDLTBL="SELECT to_regclass('public.pg_party_config_ddl');"
@@ -77,14 +75,7 @@ DDLSQL="CREATE TABLE public.pg_party_config_ddl (
    PRIMARY KEY (schema_name,master_table,ddl),
    FOREIGN KEY (schema_name,master_table) REFERENCES public.pg_party_config(schema_name,master_table)
 );"
-TBL10SQL="DO \$\$
-BEGIN
-  ALTER TABLE public.pg_party_config ADD COLUMN is_native BOOL NOT NULL DEFAULT false;
-EXCEPTION
-  WHEN duplicate_column THEN NULL;
-END
-\$\$
-"
+
 CHKFNC="SELECT count(*) FROM pg_proc WHERE proname ='pg_party_date_partition';"
 FNCSQL="
 CREATE OR REPLACE FUNCTION pg_party_date_partition(
@@ -430,9 +421,6 @@ while read db owner ; do
           log "Creating config table"
           rq $db "${TBLSQL}"
           rq $db "ALTER TABLE public.pg_party_config OWNER TO ${owner};"
-        else
-          log "Checking pg_party table"
-          rq $db "${TBL10SQL}"
         fi
     done
     if [[ "$PGVER" -ge 100000 && "$PGVER" -lt 110000 ]]; then
@@ -445,7 +433,6 @@ while read db owner ; do
           fi
       done
     fi
-
     rq $db "${CHKFNC}" | \
     while read fnc ; do
         ddl_needed=0
@@ -482,15 +469,17 @@ while read db owner ; do
     fi
     log "Checking parts in $db"
     rq $db "${TBLSEL}" | \
-    while read schema table col plan count is_native; do
-        native=""
-        if [[ ${is_native} == "t" ]]; then
-          native="_native"
-        fi
+    while read schema table col plan count; do
         log "Adding parts for ${schema}.${table} on col ${col} for next ${count} months"
-        if [[ ${is_native} == "t" && ${PGVER} -lt 100000 ]]; then
-          log "Your DB version(${PGVER}) is does not support native parititoning"
-          exit 1
+        native=""
+        if [[ ${PGVER} -ge 100000 ]]; then
+          chksql="SELECT 1 FROM pg_catalog.pg_partitioned_table p JOIN pg_catalog.pg_class c ON p.partrelid = c.oid
+                  JOIN pg_namespace n ON c.relnamespace = n.oid WHERE n.nspname = '${schema}' AND c.relname = '${table}'"
+           rq $db "${chksql}" | \
+           while read is_native; do
+              log "Declarative partitioning will be used for ${schema}.${table}"
+              native="_native"
+           done
         fi
 
         rq $db "SELECT pg_party_date_partition${native}('${schema}','${table}','${col}','${plan}',${count});" | \
