@@ -266,6 +266,7 @@ LANGUAGE plpgsql VOLATILE
 COST 100;
 "
 
+
 CHKDDLFNC="SELECT count(*) FROM pg_proc WHERE proname ='pg_party_date_partition_ddl';"
 DDLFNCSQL="
 CREATE OR REPLACE FUNCTION public.pg_party_date_partition_native(
@@ -392,7 +393,6 @@ BEGIN
             AND x.master_table = part_parent :: name
       LOOP
         tmp_sql := REPLACE(REPLACE(replace(tmp_sql, '\${PARTNAME}', part_name),'\${PARTSCHEMA}', part_schema),'\${PARTPARENT}', part_parent);
-        RAISE NOTICE 'Running DDL %', tmp_sql;
         EXECUTE tmp_sql;
       END LOOP;
     END IF;
@@ -473,15 +473,14 @@ while read db owner ; do
         log "Adding parts for ${schema}.${table} on col ${col} for next ${count} months"
         native=""
         if [[ ${PGVER} -ge 100000 ]]; then
-          chksql="SELECT 1 FROM pg_catalog.pg_partitioned_table p JOIN pg_catalog.pg_class c ON p.partrelid = c.oid
-                  JOIN pg_namespace n ON c.relnamespace = n.oid WHERE n.nspname = '${schema}' AND c.relname = '${table}'"
-           rq $db "${chksql}" | \
-           while read is_native; do
+           is_native=$(rq $db "SELECT 1 FROM pg_catalog.pg_partitioned_table p JOIN pg_catalog.pg_class c ON p.partrelid = c.oid
+                  JOIN pg_namespace n ON c.relnamespace = n.oid WHERE n.nspname = '${schema}' AND c.relname = '${table}'")
+           if [[ "$is_native" -eq 1 ]]; then
               log "Declarative partitioning will be used for ${schema}.${table}"
               native="_native"
-           done
+           fi
         fi
-
+        log "calling pg_party_date_partition${native}"
         rq $db "SELECT pg_party_date_partition${native}('${schema}','${table}','${col}','${plan}',${count});" | \
         while read added; do
            if [[ $added -ne 0 ]]; then
@@ -492,3 +491,4 @@ while read db owner ; do
         done
     done
 done
+
