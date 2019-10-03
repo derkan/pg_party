@@ -14,11 +14,12 @@
 #               CNT   : Count of future partitions to create. For example if set to 3, next
 #                       3 month's part is added.
 #           Can be run every day, it adds new objects only if they are not already existing.
-VERSION="1.2"
+VERSION="1.3"
+# version 1.3 Backwards partition creating is added to func pg_party_date_partition*
 # version 1.2 Native(declarative support for PostgresSQL version >= 10
 # version 1.1 Time based partitioning support and DB version check is added
 # version 1.0 Initial version
-# Author Erkan Durmus derkan@gmail.com
+# Author Erkan Durmus github.com/derkan/pg_party
 
 set -e
 set -u
@@ -105,6 +106,8 @@ DECLARE
   const_name        TEXT;
   if_stmt           TEXT;
   idx               INT;
+  start_idx 	    INT;
+  end_idx 	    INT;
 BEGIN
   created_parts := 0;
   date_format := CASE WHEN date_plan = 'month'
@@ -125,7 +128,13 @@ BEGIN
     RAISE EXCEPTION 'Plan is invalid: %, (valid values: month/week/day/hour/year)', date_plan;
   END IF;
   cur_time := now() AT TIME ZONE 'utc';
-  FOR i IN 1..future_part_count + 1 LOOP
+  start_idx := 1;
+  end_idx := future_part_count + 1;
+  IF future_part_count < 0 THEN
+    start_idx := future_part_count;
+    end_idx := 1;
+  END IF;
+  FOR i IN start_idx..end_idx LOOP
     start_time := (DATE_TRUNC(date_plan, cur_time)) + (i - 1 || ' ' || date_plan) :: INTERVAL;
     plan_interval := (i || ' ' || date_plan) :: INTERVAL;
     end_time := (DATE_TRUNC(date_plan, (cur_time + plan_interval)));
@@ -292,6 +301,8 @@ DECLARE
   part_attrs smallint [];
   part_strat char;
   tpart_col  text;
+  start_idx 	    INT;
+  end_idx 	    INT;
 BEGIN
   created_parts := 0;
   date_format := CASE WHEN date_plan = 'month'
@@ -348,7 +359,13 @@ BEGIN
   END IF;
 
   cur_time := now() AT TIME ZONE 'utc';
-  FOR i IN 1..future_part_count + 1 LOOP
+  start_idx := 1;
+  end_idx := future_part_count + 1;
+  IF future_part_count < 0 THEN
+    start_idx := future_part_count;
+    end_idx := 1;
+  END IF;
+  FOR i IN start_idx..end_idx LOOP
     start_time := (DATE_TRUNC(date_plan, cur_time)) + (i - 1 || ' ' || date_plan) :: INTERVAL;
     plan_interval := (i || ' ' || date_plan) :: INTERVAL;
     end_time := (DATE_TRUNC(date_plan, (cur_time + plan_interval)));
