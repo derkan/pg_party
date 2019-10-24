@@ -21,7 +21,7 @@ For PGSQL version 9.x `pg_party` inherits indexes, constraints from master table
 For example if you add this DDL to table `pg_party_config_ddl`
 
 ```sql
-INSERT INTO TABLE pg_party_config_ddl(schema_name,master_table,ddl)
+INSERT INTO pg_party_config_ddl(schema_name,master_table,ddl)
 VALUES('public', 'measurements', 'CREATE INDEX ${PARTNAME}_city_id_idx on  ${PARTNAME}(city_id)');
 ```
 
