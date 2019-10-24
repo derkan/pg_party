@@ -401,7 +401,7 @@ BEGIN
     END IF;
 
     -- Run DDL's in ddl table
-    IF NOT is_already_exists AND current_setting('server_version_num')::int < 110000
+    IF NOT is_already_exists AND current_setting('server_version_num')::int < 120000
     THEN
       FOR tmp_sql IN
       SELECT ddl
@@ -440,7 +440,7 @@ while read db owner ; do
           rq $db "ALTER TABLE public.pg_party_config OWNER TO ${owner};"
         fi
     done
-    if [[ "$PGVER" -ge 100000 && "$PGVER" -lt 110000 ]]; then
+    if [[ "$PGVER" -ge 100000 && "$PGVER" -lt 120000 ]]; then
       rq $db "${CHKDDLTBL}" | \
       while read tblins ; do
           if [[ -z "$tblins" ]]; then
